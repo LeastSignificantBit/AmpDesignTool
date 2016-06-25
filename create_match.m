@@ -28,51 +28,51 @@
 % functionality.
 %
 % Explanation of inputs
-% gIn   - The sought scattering parameter of the matching network looking into it.
-% Z0    - Normalizing impedance for the scattering parameters.
+% zIn   - The sought normalized impedance of the matching network looking into it.
+% Z0    - Normalizing impedance.
 % F0    - Design frequency of the matching network.
-% F_    - A vector with all frequencies for witch gIn_ is calculated.
-% gOut  - The scattering parameter of the output from the network
-% gOut_ - If gOut is complex a frequency dependent gOut  Needs to be supplied 
-%         in order to return an accurate gIn_.
+% F_    - A vector with all frequencies for witch zIn_ is calculated.
+% zOut  - The normalized impedance of the output from the network
+% zOut_ - If zOut is complex a frequency dependent zOut  Needs to be supplied 
+%         in order to return an accurate zIn_.
 %
 % Explanation of inputs
 % build - Two cell strings that describe the two network solutions.
-% gIn_  - The scattering parameter for each frequency F_ and each network.
+% zIn_  - The Impedance for each frequency F_ and each network.
 %%
 
-function [build, gIn_] = create_match(gIn, Z0, F0, F_=F0, gOut=1, gOut_=gOut)
+function [build, zIn_] = create_match(zIn, Z0, F0, F_=F0, zOut=1, zOut_=zOut)
   
-  if imag(gOut) == 0
-    Z_(:,:,1) = ones(size(F_))*Z0*gOut;
-    Z_(:,:,2) = ones(size(F_))*Z0*gOut;
+  if imag(zOut) == 0
+    Z_(:,:,1) = ones(size(F_))*Z0*zOut;
+    Z_(:,:,2) = ones(size(F_))*Z0*zOut;
     else
-      Z_(:,:,1) = ones(size(F_))*Z0.*gOut_;
-      Z_(:,:,2) = ones(size(F_))*Z0.*gOut_;
+      Z_(:,:,1) = ones(size(F_))*Z0.*zOut_;
+      Z_(:,:,2) = ones(size(F_))*Z0.*zOut_;
   endif
   
   omega_ = 2*pi*F_;
   omega  = 2*pi*F0;
 
-  if real(gIn)<real(gOut) % Load is parallel with one element
+  if real(zIn)<real(zOut) % Load is parallel with one element
   
-    Rs = real(gIn)*Z0;
+    Rs = real(zIn)*Z0;
     
-    Rp = ((imag(gOut)/real(gOut))^2 + 1)*real(gOut)*Z0;
+    Rp = ((imag(zOut)/real(zOut))^2 + 1)*real(zOut)*Z0;
     Q= sqrt(Rp/Rs - 1);
     
-    if Rp == real(gOut)*Z0
+    if Rp == real(zOut)*Z0
       Xp = Rp/Q;
     else
-      Xp_par = Rp*real(gOut)/imag(gOut);
+      Xp_par = Rp*real(zOut)/imag(zOut);
       Xp = Rp*Xp_par./(Q*Xp_par+[-1 1]*Rp);
     endif    
      
-    Xs = Q*Rs+[-1 1]*imag(gIn)*Z0;
+    Xs = Q*Rs+[-1 1]*imag(zIn)*Z0;
     
     Xp = [1 -1].*Xp;
     Xs = [-1 1].*Xs;
-    build{1} = build{2} = [num2eng(Z0.*gOut,4) 'Ohm'];;
+    build{1} = build{2} = [num2eng(Z0.*zOut,4) 'Ohm'];
     for ix = [1 2]
          
       if Xp(ix) < 0     % Capacitor
@@ -102,25 +102,25 @@ function [build, gIn_] = create_match(gIn, Z0, F0, F_=F0, gOut=1, gOut_=gOut)
     endfor
     
     
-  elseif real(gIn)>=real(gOut) % Load is in series with one element
+  elseif real(zIn)>=real(zOut) % Load is in series with one element
 
-    Rs = real(gOut)*Z0;
+    Rs = real(zOut)*Z0;
     
-    Rp = ((imag(gIn)/real(gIn))^2 + 1)*real(gIn)*Z0;
+    Rp = ((imag(zIn)/real(zIn))^2 + 1)*real(zIn)*Z0;
     Q= sqrt(Rp/Rs - 1);
     
-    if Rp == real(gIn)*Z0
+    if Rp == real(zIn)*Z0
       Xp = Rp/Q;
     else
-      Xp_par = Rp*real(gIn)/imag(gIn);
+      Xp_par = Rp*real(zIn)/imag(zIn);
       Xp = Rp*Xp_par./(Q*Xp_par+[1 -1]*Rp);
     endif    
      
-    Xs = Q*Rs+[1 -1]*imag(gOut)*Z0;
+    Xs = Q*Rs+[1 -1]*imag(zOut)*Z0;
     
     Xp = [1 -1].*Xp;
     Xs = [-1 1].*Xs;
-    build{1} = build{2} = [num2eng(Z0.*gIn,4) 'Ohm'];;
+    build{1} = build{2} = [num2eng(Z0.*zOut,4) 'Ohm'];
     for ix = [1 2]
     
       if Xs(ix) < 0     % Capacitor
@@ -151,29 +151,7 @@ function [build, gIn_] = create_match(gIn, Z0, F0, F_=F0, gOut=1, gOut_=gOut)
     endfor
     
   endif 
-  gIn_ = Z_/Z0;
+  zIn_ = Z_/Z0;
 endfunction
 
-function s=num2eng(d, prec=4)
-  if d>=1e9
-    s=[num2str(d/1e9,prec) ' G'];
-  elseif d>=1e6
-    s=[num2str(d/1e6,prec) ' M'];
-  elseif d>=1e3
-    s=[num2str(d/1e3,prec) ' k'];
-  elseif d>=1
-    s=[num2str(d,prec) ' '];
-  elseif d>=1e-3
-    s=[num2str(d/1e-3,prec) ' m'];
-  elseif d>=1e-6
-    s=[num2str(d/1e-6,prec) ' µ'];
-  elseif d>=1e-9
-    s=[num2str(d/1e-9,prec) ' n'];
-  elseif d>=1e-12
-    s=[num2str(d/1e-12,prec) ' p'];
-  elseif d>=1e-15
-    s=[num2str(d/1e-15,prec) ' f'];
-  else
-    s=[num2str(d/1e-18,prec) ' a'];
-  endif
-endfunction
+
