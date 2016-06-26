@@ -71,7 +71,7 @@ S21_=A(:,4).*exp(i*pi/180*A(:,5));
 S12_=A(:,6).*exp(i*pi/180*A(:,7));
 S22_=A(:,8).*exp(i*pi/180*A(:,9));
 
-idx = 10;
+idx = 18;
 F0 = F_ (idx);
 S11= S11_(idx);
 S12= S12_(idx);
@@ -88,7 +88,7 @@ clear filename startRow A fileID idx;
 
 %% User Data
 des_prio = 1;	% What to optimize fore, See above.
-set_gain = 10; 	% [dB]
+set_gain = 6; 	% [dB]
 gNF 	 = NaN; % Optimal gS for minimized noise figure.
 
 %% Calculate some useful variables %%
@@ -111,17 +111,16 @@ K = (1 - abs(S11)^2 - abs(S22)^2 + abs(delta)^2) / (2 * abs( S12 * S21));
 u = (1 - abs(S11)^2) / (abs(S22-delta*conj(S11)) + abs(S12*S21));
 
 % Max gain
-GSUmax = 10*log10(1 / (1 - abs(S11)^2)); % Max source matching gain, unilateral transistor.
-GLUmax = 10*log10(1 / (1 - abs(S22)^2)); % Max load matching gain, unilateral transistor.
-G0 = 10*log10(abs(S21)^2);		 % Transistor gain.
-GTUmax = GSUmax + G0 + GLUmax;		 % Max Unilateral transducer gain.
+GSUmax = 10*log10(1 / (1 - abs(S11)^2));  % Max source matching gain, unilateral transistor.
+GLUmax = 10*log10(1 / (1 - abs(S22)^2));  % Max load matching gain, unilateral transistor.
+G0 = 10*log10(abs(S21)^2);		            % Transistor gain.
+GTUmax = GSUmax + G0 + GLUmax;		        % Max Unilateral transducer gain.
 
+% Conjugated impedances (maximizes gain at F0)
 B1 = 1 +abs(S11)^2 - abs(S22)^2 + abs(delta)^2;
 B2 = 1 +abs(S22)^2 - abs(S11)^2 + abs(delta)^2;
 C1 = S11 - delta*conj(S22);
 C2 = S22 - delta*conj(S11);
-
-% Conjugated impedances (maximizes gain at F0
 gSmax = (B1-B1/abs(B1)*sqrt(B1^2-4*abs(C1)^2))/2/C1;
 gLmax = (B2-B2/abs(B2)*sqrt(B2^2-4*abs(C2)^2))/2/C2;
 
@@ -137,21 +136,21 @@ switch des_prio
 		Gmatch = set_gain - G0; % the sum GS and GL
     
 		% Normalized gain factors
-		gl_ = 10.^(linspace(GLUmax, Gmatch-GSUmax, 200) / 10) / GLUmax;
-		gs_ = 10.^((Gmatch - linspace(GLUmax, Gmatch-GSUmax, 200)) / 10) / GSUmax;
+		gl_ = (10.^(linspace(GLUmax, Gmatch-GSUmax, 10) / 10)) / (10^(GLUmax/10 +0.00001));
+		gs_ = (10.^((Gmatch - linspace(GLUmax, Gmatch-GSUmax, 10)) / 10)) /  (10^(GSUmax/10+0.00001));
     
 		% Calculate gain circles
 		Cl_ = (gl_ * conj(S22)) ./ (1 - (1 - gl_)*abs(S22)^2);
-		Rl_ = (sqrt(1 -gl_)*(1 - abs(S22)^2)) ./ (1 - (1 - gl_)*abs(S22)^2);
 		Cs_ = (gs_ * conj(S11)) ./ (1 - (1 - gs_)*abs(S11)^2);
+		Rl_ = (sqrt(1 -gl_)*(1 - abs(S22)^2)) ./ (1 - (1 - gl_)*abs(S22)^2);
 		Rs_ = (sqrt(1 -gs_)*(1 - abs(S11)^2)) ./ (1 - (1 - gs_)*abs(S11)^2);
     
 		% Maximize badwidth
-		[~, i_maxbw] = min( abs(abs(Cl_)-Rl_).^2 + abs(abs(Cs_)).^2-Rs_);
+		[~, i_maxbw] = min( abs(abs(Cl_)-Rl_).^2 + abs(abs(Cs_)-Rs_).^2);
     
 		% Pick out the impedances
-		gL = (abs(Cl_(i_maxbw))-Rl_) *exp(i*angle(Cl_(i_maxbw)));
-		gS = (abs(Cs_(i_maxbw))-Rs_) *exp(i*angle(Cs_(i_maxbw)));
+		gL = (abs(Cl_(i_maxbw))-Rl_(i_maxbw)) *exp(i*angle(Cl_(i_maxbw)));
+		gS = (abs(Cs_(i_maxbw))-Rs_(i_maxbw)) *exp(i*angle(Cs_(i_maxbw)));
 	otherwise % Simple conjugate matching, assuming abs(S12)=0.
 		gS = conj(gIn);
 		gL = conj(gOut);
@@ -190,6 +189,10 @@ if size(F_) > 0
   G0_ = 10*log10(abs(S21_).^2);
   GS_ = 10*log10((1 - abs(gS_).^2)./abs(1 - [S11_ S11_].*gS_).^2);
   GL_ = 10*log10((1 - abs(gL_).^2)./abs(1 - [S22_ S22_].*gL_).^2);
+  % Max gain
+  GSUmax_ = 10*log10(1 ./ (1 - abs(S11_).^2));
+  GLUmax_ = 10*log10(1 ./ (1 - abs(S22_).^2));  
+  GTUmax_ = GSUmax_ + G0_ + GLUmax_;
   
   G11_  = G0_ + GS_(:,1) + GL_(:,1);
   G12_  = G0_ + GS_(:,1) + GL_(:,2);
@@ -206,7 +209,8 @@ if size(F_) > 0
   plot(F_,G22_,'m','linewidth',4);
   legend('1>T>1','1>T>2','2>T>1','2>T>2')
   plot(x,[G+1 G+1],'k--',x,[G-1 G-1],'k--')
-  text(F0,GTUmax,'----- G_{max} -----','horizontalalignment','center')
+  text(F_(1),GTUmax_(1),'G_{TU_{max}}')
+  plot(F_,GTUmax_,'k--')
   text(x(1),G,'\pm1dB')
   plot([F0 F0],[min(G11_)-10 max(G11_)+5],'k--')
   text(F0, min(G11_),['F_{0}=' num2eng(F0) 'Hz'])
@@ -235,7 +239,8 @@ if size(F_) > 0
   plot(F_(~stableS(:,1)),u_(~stableS(:,1)),'*r','markersize',10,'marker','d');
   plot(F_(~stableS(:,2)),u_(~stableS(:,2)),'*r','markersize',10,'marker','o');
   warning('off');
-  legend('\mu test', 'Unstable Load (1)' , 'Unstable Load (2)' , 'Unstable Source (1)' , 'Unstable Source (2)');
+  legend('\mu test', 'Unstable Load (1)' , 'Unstable Load (2)' , ...
+         'Unstable Source (1)' , 'Unstable Source (2)');
   warning('on');
   plot(x,[1 1],'k--');
   text(x(1),1.01,'Unconditionally Stable');
@@ -243,13 +248,19 @@ if size(F_) > 0
   plot([F0 F0],[min(u_) max(u_)],'k--')
   text(F0, min(u_),['F_{0}=' num2eng(F0) 'Hz'])
   if find(stableS == 0 || stableL == 0)
-    fprintf('Th');
+    fprintf('Stability:\n******* Warning *******\n\n    Unstabilities ');
+    fprintf('found\n\n***********************\n');
+  else
+    fprintf('Stability:\nNo instabilites found in the frequency range ');
+    fprintf('%sHz - %sHz\n',num2eng(min(F_)),num2eng(max(F_)));
   endif
-
+else % No frequency sweep
+  fprintf('Stability:\nµ-test value: %f',u);
+  
   
 endif
 
-%% Plot a Smith Chart
+%% Plot a Smith Chart %%
 figure
 theta = 0:pi/50:2*pi;
 x=sin(theta);y=cos(theta);
@@ -269,6 +280,11 @@ text(real(ScL), imag(ScL), 'Load Stability','Color','b')
 plot(SrS*sin(theta)+real(ScS),SrS*cos(theta)+imag(ScS),'r')
 text(real(ScS), imag(ScS), 'Source Stability','Color','r')
 
+if des_prio == 3
+  %Gain circles
+  plot(Rl_(i_maxbw)*sin(theta)+real(Cl_(i_maxbw)), Rl_(i_maxbw)*cos(theta)+imag(Cl_(i_maxbw)),'b--');
+  plot(Rs_(i_maxbw)*sin(theta)+real(Cs_(i_maxbw)), Rs_(i_maxbw)*cos(theta)+imag(Cs_(i_maxbw)),'r--');
+endif
 % 
 plot(real(gL),imag(gL),'b.')
 text(real(gL)+0.05,imag(gL),'\Gamma_{L}')
