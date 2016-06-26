@@ -64,6 +64,8 @@ A = dlmread(filename,'', startRow,0);
 fclose(fileID);
 
 Z0 = 50;
+gNF 	 = 0.1 + 0.2i; % Optimal gS for minimized noise figure. (set to NA if not available)
+NFmin  = 2.1;         % Minimum noise figure of transistor, attained at gS = gNF
 
 F_=A(:,1)*1e6;
 S11_=A(:,2).*exp(i*pi/180*A(:,3));
@@ -71,7 +73,7 @@ S21_=A(:,4).*exp(i*pi/180*A(:,5));
 S12_=A(:,6).*exp(i*pi/180*A(:,7));
 S22_=A(:,8).*exp(i*pi/180*A(:,9));
 
-idx = 18;
+idx = 11;
 F0 = F_ (idx);
 S11= S11_(idx);
 S12= S12_(idx);
@@ -83,13 +85,31 @@ S22= S22_(idx);
 %S12= 0.031*exp(i*pi/180* -9);
 %S21= 4.250*exp(i*pi/180* 61);
 %S22= 0.507*exp(i*pi/180* -117);
+transistor_name = 'BFR92A';
+transistor_VCE  = '5 V';
+transistor_IC   = '10 mA';
+
+fprintf ('## Designing an RF amplifier using the %s transistor ##\n',transistor_name);
+fprintf ('The following parameters are used:\n');
+if size(F_)>0
+  fprintf('(%d S-parameters between %sHz - %sHz)\n', ...
+          max(size(F_)), num2eng(min(F_)), num2eng(max(F_)));
+endif        
+
+fprintf ('VCE = %s,\t\tIC = %s,\nZ0 = %d Ohm,\t\tF0 = %sHz,\n',transistor_VCE,...
+         transistor_IC, Z0, num2eng(F0));
+if ~isna(gNF)
+  fprintf('Gamma_opt = %s,\tNFmin = %.2f dB\n',num2str(gNF,3), NFmin);
+endif
+fprintf ('S11 = %s,\tS12 = %s,\nS21 = %s,\tS22 = %s.\n\n', num2str(S11,3),...
+          num2str(S12,3),num2str(S21,3),num2str(S22,3));
 
 clear filename startRow A fileID idx;
 
 %% User Data
-des_prio = 1;	% What to optimize fore, See above.
-set_gain = 6; 	% [dB]
-gNF 	 = NaN; % Optimal gS for minimized noise figure.
+des_prio = 3;	% What to optimize for, See above.
+set_gain = 3; 	% dB
+NFmax    = 4;   % dB
 
 %% Calculate some useful variables %%
 %Reflection coefficient looking into port 1 of the transistor with Zs=Z0
@@ -127,17 +147,22 @@ gLmax = (B2-B2/abs(B2)*sqrt(B2^2-4*abs(C2)^2))/2/C2;
 %% Decide input and output matching impedances %%
 switch des_prio
 	case {1} % Maximum gain 
+    fprintf ('Optimizing for maximum gain.\n\n');
 		gS = gSmax;
 		gL = gLmax;
 	case {2} % Minimized noise
+    fprintf ('Optimizing for bandwidth with a NF < %.2f dB.\n\n', NFmax);
 		gS = gNF;
 		gL = conj(gOut);
 	case {3} % Max Bandwidth, fixed Gain, unilateral transistor is assumed.
+    fprintf ('Optimizing for bandwidth at a gain of %.1f dB.\n\n', set_gain);
 		Gmatch = set_gain - G0; % the sum GS and GL
     
 		% Normalized gain factors
-		gl_ = (10.^(linspace(GLUmax, Gmatch-GSUmax, 10) / 10)) / (10^(GLUmax/10 +0.00001));
-		gs_ = (10.^((Gmatch - linspace(GLUmax, Gmatch-GSUmax, 10)) / 10)) /  (10^(GSUmax/10+0.00001));
+		gl_ = (10.^(linspace(GLUmax, Gmatch-GSUmax, 10) / 10)) ...
+          / (10^(GLUmax/10 +0.00001));
+		gs_ = (10.^((Gmatch - linspace(GLUmax, Gmatch-GSUmax, 10)) / 10)) ...
+          /  (10^(GSUmax/10+0.00001));
     
 		% Calculate gain circles
 		Cl_ = (gl_ * conj(S22)) ./ (1 - (1 - gl_)*abs(S22)^2);
@@ -152,8 +177,8 @@ switch des_prio
 		gL = (abs(Cl_(i_maxbw))-Rl_(i_maxbw)) *exp(i*angle(Cl_(i_maxbw)));
 		gS = (abs(Cs_(i_maxbw))-Rs_(i_maxbw)) *exp(i*angle(Cs_(i_maxbw)));
 	otherwise % Simple conjugate matching, assuming abs(S12)=0.
-		gS = conj(gIn);
-		gL = conj(gOut);
+		gS = gSmax;
+		gL = gLmax;
 endswitch
 
 
@@ -167,22 +192,31 @@ else
   [matchL, zL_] = create_match((1+gL)/(1-gL), Z0, F0); 
 endif
 
-fprintf('Source circuit: %sOhm (as seen from the transistor)\n1. %s\n2. %s\n\n',num2eng(Z0*(1+gS)/(1-gS),3),matchS{1},matchS{2});
-fprintf('Load circuit: %sOhm (as seen from the transistor)\n1. %s\n2. %s\n\n',num2eng(Z0*(1+gL)/(1-gL),3),matchL{1},matchL{2});
-%% Calculate characterisics %%
+fprintf('Source circuit: %sOhm (as seen from the transistor)\n1. %s\n2. %s\n\n',
+        num2eng(Z0*(1+gS)/(1-gS),3),matchS{1},matchS{2});
+fprintf('Load circuit: %sOhm (as seen from the transistor)\n1. %s\n2. %s\n\n',
+        num2eng(Z0*(1+gL)/(1-gL),3),matchL{1},matchL{2});
+%% Calculate characteristics %%
 % Gain
 GL = 10*log10((1 - abs(gL)^2)/abs(1 - S22*gL)^2); % Output matching circuit gain 
-GS = 10*log10((1 - abs(gS)^2)/abs(1 - S11*gS)^2);
+GS = 10*log10((1 - abs(gS)^2)/abs(1 - S11*gS)^2); % Input matching circuit gain 
 G  =  G0 + GL + GS;
+
+fprintf('Transducer gain = %.2f dB (@ %sHz)\n',G,num2eng(F0));
+fprintf('Source:     %.2f dB\n',GS);
+fprintf('Transistor: %.2f dB\n',GL);
+fprintf('Load:       %.2f dB\n',G0);
 
 % Unilateral figure of merit
 U = abs(S12)*abs(S12)*abs(S12)*abs(S12)/(1-abs(S11)^2)/(1-abs(S22)^2);
 UErrU = 10*log10(1/(1-U)^2);
 UErrL = 10*log10(1/(1+U)^2);
+fprintf('Error in gain introduced from the unilateral approximation:\n');
+fprintf('%.3f < GT - GTU < %.3f dB\n\n',UErrL,UErrU);
 
 %% Present frequency sweep %%
 if size(F_) > 0
-  % Presentation of badwidth
+  % Presentation of bandwidth
   gS_ = squeeze((zS_- 1 )./(zS_ + 1));
   gL_ = squeeze((zL_- 1 )./(zL_ + 1));
 
@@ -248,17 +282,21 @@ if size(F_) > 0
   plot([F0 F0],[min(u_) max(u_)],'k--')
   text(F0, min(u_),['F_{0}=' num2eng(F0) 'Hz'])
   if find(stableS == 0 || stableL == 0)
-    fprintf('Stability:\n******* Warning *******\n\n    Unstabilities ');
+    fprintf('Stability:\n******* Warning *******\n\n    Instabilities ');
     fprintf('found\n\n***********************\n');
   else
-    fprintf('Stability:\nNo instabilites found in the frequency range ');
+    fprintf('Stability:\nNo instabilities found in the frequency range ');
     fprintf('%sHz - %sHz\n',num2eng(min(F_)),num2eng(max(F_)));
   endif
 else % No frequency sweep
-  fprintf('Stability:\nµ-test value: %f',u);
-  
+  fprintf('Stability:\n');
   
 endif
+
+%Stability
+fprintf('µ-test value: %.4f\n',u);
+fprintf('K = %.4f\n|Δ| = %.4f\n\n',K,abs(delta));
+
 
 %% Plot a Smith Chart %%
 figure
