@@ -26,7 +26,7 @@ suggested matching networks.
    2        | Noise    | Gain  | Minimum noise at fixed gain
    3        | Bandwidth| Gain  | Maximum bandwidth at fixed gain
    4        | Gain     | gL    | Maximum gain at fixed load impedance
-   5        | Noise    | gL    | Maximum noise at fixed load impedance
+   5        | Noise    | gL    | Minimum noise at fixed load impedance
    6        | Bandwidth| gL    | Maximum bandwidth at fixed load impedance
    7        | Gain     | gS    | Maximum gain at fixed source impedance
    8        | Bandwidth| gS    | Maximum bandwidth at fixed source impedance
