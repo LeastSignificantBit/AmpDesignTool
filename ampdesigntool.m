@@ -107,18 +107,7 @@ C2 = S22 - delta*conj(S11);
 gSmax = (B1-B1/abs(B1)*sqrt(B1^2-4*abs(C1)^2))/2/C1;
 gLmax = (B2-B2/abs(B2)*sqrt(B2^2-4*abs(C2)^2))/2/C2;
 
-%% Decide input and output matching impedances %%
-switch des_prio
-	case {1} % Maximum gain 
-    fprintf ('Optimizing for maximum gain.\n\n');
-		gS = gSmax;
-		gL = gLmax;
-	case {2} % Minimized noise
-    fprintf ('Optimizing for bandwidth with a NF < %.2f dB.\n\n', NFmax);
-		gS = gNF;
-		gL = conj(gOut);
-	case {3} % Max Bandwidth, fixed Gain, unilateral transistor is assumed.
-    fprintf ('Optimizing for bandwidth at a gain of %.1f dB.\n\n', set_gain);
+if ~isna(set_gain) && ~isnan(set_gain)  % Gain circles, unilateral transistor is assumed.
 		Gmatch = set_gain - G0; % the sum GS and GL
     
 		% Normalized gain factors
@@ -132,13 +121,50 @@ switch des_prio
 		Cs_ = (gs_ * conj(S11)) ./ (1 - (1 - gs_)*abs(S11)^2);
 		Rl_ = (sqrt(1 -gl_)*(1 - abs(S22)^2)) ./ (1 - (1 - gl_)*abs(S22)^2);
 		Rs_ = (sqrt(1 -gs_)*(1 - abs(S11)^2)) ./ (1 - (1 - gs_)*abs(S11)^2);
-    
+endif
+
+
+if ~isna(gNF) % Circles of constant noise figure.
+  rN = real((1+gNF)/(1-gNF)); % normalized noise resistance of the transistor at optimal noisefigure
+  NF_ = linspace(0.01,20,20); % vector of noise figures
+  N_  = NF_ - NFmin)/4/rN*abs(1+gNF)^2; %noise figure parameter
+  Cf_ = gNF./(N_ +1);
+  RF_ = sqrt(N_.*(N_ + 1 - abs(gNF)^2))./(N_ + 1);
+endif
+
+%% Decide input and output matching impedances %%
+switch des_prio
+	case {1} % Maximum gain 
+    fprintf ('Optimizing for maximum gain.\n\n');
+		gS = gSmax;
+		gL = gLmax;
+	case {2} % Minimized noise, fixed gain
+    fprintf ('Optimizing for low noise figure at a gain of %.1f dB.\n\n', set_gain);
+    for 
+		gS = gNF;
+		gL = conj(gOut);
+	case {3} % Max Bandwidth, fixed Gain, unilateral transistor is assumed.
+    fprintf ('Optimizing for bandwidth at a gain of %.1f dB.\n\n', set_gain);    
 		% Maximize badwidth
 		[~, i_maxbw] = min( abs(abs(Cl_)-Rl_).^2 + abs(abs(Cs_)-Rs_).^2);
     
 		% Pick out the impedances
 		gL = (abs(Cl_(i_maxbw))-Rl_(i_maxbw)) *exp(i*angle(Cl_(i_maxbw)));
 		gS = (abs(Cs_(i_maxbw))-Rs_(i_maxbw)) *exp(i*angle(Cs_(i_maxbw)));
+  case {4}
+    fprintf ('Optimizing for gain with a NF of %.2f dB.\n\n', NFmax);
+  case {5}
+    fprintf ('Optimizing for bandwidth with a NF of %.2f dB.\n\n', NFmax);
+  case {6}
+    fprintf ('Optimizing for gain with a gL of %sOhm.\n\n', num2eng(Z0*(1+gL)/(1-gL),3));
+  case {7}
+    fprintf ('Optimizing for noise figure with a gL of %sOhm.\n\n', num2eng(Z0*(1+gL)/(1-gL),3));
+  case {8}
+    fprintf ('Optimizing for bandwidth with a gL of %sOhm.\n\n', num2eng(Z0*(1+gL)/(1-gL),3));
+  case {9}
+    fprintf ('Optimizing for gain with a gS of %sOhm.\n\n', num2eng(Z0*(1+gS)/(1-gS),3));
+  case {10}
+    fprintf ('Optimizing for gain with a gS of %sOhm.\n\n', num2eng(Z0*(1+gS)/(1-gS),3));
 	otherwise % Simple conjugate matching, assuming abs(S12)=0.
 		gS = gSmax;
 		gL = gLmax;

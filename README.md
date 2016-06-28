@@ -23,13 +23,15 @@ suggested matching networks.
    des_prio | Priority | Fixed | Note
    ---------|----------|-------|---------
    1        | Gain     |       | Maximum gain 
-   2        | Noise    | Gain  | Minimum noise at fixed gain
+   2        | Noise>BW | Gain  | Minimum noise at fixed gain
    3        | Bandwidth| Gain  | Maximum bandwidth at fixed gain
-   4        | Gain     | gL    | Maximum gain at fixed load impedance
-   5        | Noise    | gL    | Minimum noise at fixed load impedance
-   6        | Bandwidth| gL    | Maximum bandwidth at fixed load impedance
-   7        | Gain     | gS    | Maximum gain at fixed source impedance
-   8        | Bandwidth| gS    | Maximum bandwidth at fixed source impedance
+   4        | Gain     | NF    | Maximum gain at fixed noise figure
+   5        | Bandwidth| NF    | Maximum bandwidth at fixed noise figure
+   6        | Gain     | gL    | Maximum gain at fixed load impedance
+   7        | Noise    | gL    | Minimum noise at fixed load impedance
+   8        | Bandwidth| gL    | Maximum bandwidth at fixed load impedance
+   9        | Gain     | gS    | Maximum gain at fixed source impedance
+  10        | Bandwidth| gS    | Maximum bandwidth at fixed source impedance
 
 
 
