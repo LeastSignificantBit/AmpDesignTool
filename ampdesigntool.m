@@ -17,6 +17,7 @@
 
 close all;
 clear all;
+warning ('off', 'Octave:broadcast'); % We use some broadcasting
 
 %% Import data %%
 filename = 'BFR92A_5V10mA.s2p';
@@ -70,9 +71,17 @@ fprintf ('S11 = %s,\tS12 = %s,\nS21 = %s,\tS22 = %s.\n\n', num2str(S11,3),...
 clear filename startRow A fileID idx;
 
 %% User Data
-des_prio = 3;	% What to optimize for, See above.
-set_gain = 3; 	% dB
+des_prio = 2;	% What to optimize for, See above.
+set_gain = 10; 	% dB
 NFmax    = 4;   % dB
+
+%% What to display %%
+plot_NF_C = 0;
+plot_Gl_C = 0;
+plot_Gs_C = 0;
+if ~isna(gNF)
+	plot_gNF =1;
+endif
 
 %% Calculate some useful variables %%
 %Reflection coefficient looking into port 1 of the transistor with Zs=Z0
@@ -111,9 +120,9 @@ if ~isna(set_gain) && ~isnan(set_gain)  % Gain circles, unilateral transistor is
 		Gmatch = set_gain - G0; % the sum GS and GL
     
 		% Normalized gain factors
-		gl_ = (10.^(linspace(GLUmax, Gmatch-GSUmax, 10) / 10)) ...
+		gl_ = (10.^(linspace(GLUmax, Gmatch-GSUmax, 100) / 10)) ...
           / (10^(GLUmax/10 +0.00001));
-		gs_ = (10.^((Gmatch - linspace(GLUmax, Gmatch-GSUmax, 10)) / 10)) ...
+		gs_ = (10.^((Gmatch - linspace(GLUmax, Gmatch-GSUmax, 100)) / 10)) ...
           /  (10^(GSUmax/10+0.00001));
     
 		% Calculate gain circles
@@ -126,10 +135,10 @@ endif
 
 if ~isna(gNF) % Circles of constant noise figure.
   rN = real((1+gNF)/(1-gNF)); % normalized noise resistance of the transistor at optimal noisefigure
-  NF_ = linspace(0.01,20,20); % vector of noise figures
-  N_  = NF_ - NFmin)/4/rN*abs(1+gNF)^2; %noise figure parameter
+  NF_ = logspace(log10(NFmin+0.0001),1,200); % vector of noise figures
+  N_  = (NF_ - NFmin)/4/rN*abs(1+gNF)^2; %noise figure parameter
   Cf_ = gNF./(N_ +1);
-  RF_ = sqrt(N_.*(N_ + 1 - abs(gNF)^2))./(N_ + 1);
+  Rf_ = sqrt(N_.*(N_ + 1 - abs(gNF)^2))./(N_ + 1);
 endif
 
 %% Decide input and output matching impedances %%
@@ -140,9 +149,26 @@ switch des_prio
 		gL = gLmax;
 	case {2} % Minimized noise, fixed gain
     fprintf ('Optimizing for low noise figure at a gain of %.1f dB.\n\n', set_gain);
-    for 
-		gS = gNF;
-		gL = conj(gOut);
+		if find(Rs_ > abs(gNF - Cs_))
+			gS = gNF;
+			GS = 10*log10((1 - abs(gS)^2)/abs(1 - S11*gS)^2);
+			gl = (10^((Gmatch - GS)/10))/(10^(GLUmax/10));
+			i_maxbw = 1; 
+			Cl_(i_maxbw) = (gl*conj(S22))/(1 - (1 - gl)*abs(S22)^2);
+			Rl_(i_maxbw) = (sqrt(1 - gl)*(1 - abs(S22)^2))/(1 - (1 - gl)*abs(S22)^2);
+			gL = (abs(Cl_(i_maxbw))-Rl_(i_maxbw)) *exp(i*angle(Cl_(i_maxbw)));
+			plot_Gl_C = 1;
+			plot_gNF = 0;
+		else 
+    			Coverlap = Rf_' > abs(abs(conj(Cf_')-Cs_)-Rs_); 
+			i_minf = find(max(Coverlap'), 1, 'first');
+			i_maxbw= find(Coverlap(i_minf,:), 1, 'first');
+			gS = Cf_(i_minf) + Rf_(i_minf)*exp(i*angle(Cs_(i_maxbw) - Cf_(i_minf)));
+			gL = (abs(Cl_(i_maxbw))-Rl_(i_maxbw)) *exp(i*angle(Cl_(i_maxbw)));
+			plot_NF_C = 1;
+			plot_Gl_C = 1;
+			plot_Gs_C = 1;
+		endif
 	case {3} % Max Bandwidth, fixed Gain, unilateral transistor is assumed.
     fprintf ('Optimizing for bandwidth at a gain of %.1f dB.\n\n', set_gain);    
 		% Maximize badwidth
@@ -151,8 +177,22 @@ switch des_prio
 		% Pick out the impedances
 		gL = (abs(Cl_(i_maxbw))-Rl_(i_maxbw)) *exp(i*angle(Cl_(i_maxbw)));
 		gS = (abs(Cs_(i_maxbw))-Rs_(i_maxbw)) *exp(i*angle(Cs_(i_maxbw)));
+		plot_Gl_C = 1;
+		plot_Gs_C = 1;
   case {4}
     fprintf ('Optimizing for gain with a NF of %.2f dB.\n\n', NFmax);
+    N = (NFmax - NFmin)/4/rN*abs(1+gNF);
+    Cf = gNF./(N + 1);
+    Rf = sqrt(N.*(N + 1 - abs(gNF)^2))./(N + 1);
+    if Rf > abs(Cf - gSmax)
+	gS = gSmax;
+    else % Bruteforse ...
+        theta = linspace (0,2*pi,2000);
+	ggNF_ = Rf*sin(theta) + i*Rf*cos(thetaa) + Cf;
+	[~, i_ggNF] = max( 10*log10((1 - abs(ggNF_)^2)/abs(1 - S11*ggNF_)^2));
+	gS = ggNF_(i_ggNF); 
+    endif
+    gL = gLmax;
   case {5}
     fprintf ('Optimizing for bandwidth with a NF of %.2f dB.\n\n', NFmax);
   case {6}
@@ -181,9 +221,9 @@ else
   [matchL, zL_] = create_match((1+gL)/(1-gL), Z0, F0); 
 endif
 
-fprintf('Source circuit: %sOhm (as seen from the transistor)\n1. %s\n2. %s\n\n',
+fprintf('Source circuit: %sOhm (as seen from the transistor)\n1. %s\n2. %s\n\n', ...
         num2eng(Z0*(1+gS)/(1-gS),3),matchS{1},matchS{2});
-fprintf('Load circuit: %sOhm (as seen from the transistor)\n1. %s\n2. %s\n\n',
+fprintf('Load circuit: %sOhm (as seen from the transistor)\n1. %s\n2. %s\n\n', ...
         num2eng(Z0*(1+gL)/(1-gL),3),matchL{1},matchL{2});
 %% Calculate characteristics %%
 % Gain
@@ -193,14 +233,14 @@ G  =  G0 + GL + GS;
 
 fprintf('Transducer gain = %.2f dB (@ %sHz)\n',G,num2eng(F0));
 fprintf('Source:     %.2f dB\n',GS);
-fprintf('Transistor: %.2f dB\n',GL);
-fprintf('Load:       %.2f dB\n',G0);
+fprintf('Transistor: %.2f dB\n',G0);
+fprintf('Load:       %.2f dB\n',GL);
 
 % Unilateral figure of merit
 U = abs(S12)*abs(S12)*abs(S12)*abs(S12)/(1-abs(S11)^2)/(1-abs(S22)^2);
 UErrU = 10*log10(1/(1-U)^2);
 UErrL = 10*log10(1/(1+U)^2);
-fprintf('Error in gain introduced from the unilateral approximation:\n');
+fprintf('Gain error introduced from the unilateral approximation:\n');
 fprintf('%.3f < GT - GTU < %.3f dB\n\n',UErrL,UErrU);
 
 %% Present frequency sweep %%
@@ -261,10 +301,10 @@ if size(F_) > 0
   plot(F_(~stableL(:,2)),u_(~stableL(:,2)),'*r','markersize',10,'marker','+');
   plot(F_(~stableS(:,1)),u_(~stableS(:,1)),'*r','markersize',10,'marker','d');
   plot(F_(~stableS(:,2)),u_(~stableS(:,2)),'*r','markersize',10,'marker','o');
-  warning('off');
+  %warning('off');
   legend('\mu test', 'Unstable Load (1)' , 'Unstable Load (2)' , ...
          'Unstable Source (1)' , 'Unstable Source (2)');
-  warning('on');
+  %warning('on');
   plot(x,[1 1],'k--');
   text(x(1),1.01,'Unconditionally Stable');
   
@@ -307,13 +347,23 @@ text(real(ScL), imag(ScL), 'Load Stability','Color','b')
 plot(SrS*sin(theta)+real(ScS),SrS*cos(theta)+imag(ScS),'r')
 text(real(ScS), imag(ScS), 'Source Stability','Color','r')
 
-if des_prio == 3
-  %Gain circles
+if plot_NF_C 
+  % plot NF circle
+  plot(Rf_(i_minf)*sin(theta)+real(Cf_(i_minf)), Rf_(i_minf)*cos(theta)+imag(Cf_(i_minf)),'g--');
+endif
+if plot_gNF
+  plot(real(gNF),imag(gNF),'c.') 
+  text(real(gNF)+0.02,imag(gNF),'\Gamma_{NF_{opt}}')
+endif
+%Gain circles
+if plot_Gl_C
   plot(Rl_(i_maxbw)*sin(theta)+real(Cl_(i_maxbw)), Rl_(i_maxbw)*cos(theta)+imag(Cl_(i_maxbw)),'b--');
+endif
+if plot_Gs_C
   plot(Rs_(i_maxbw)*sin(theta)+real(Cs_(i_maxbw)), Rs_(i_maxbw)*cos(theta)+imag(Cs_(i_maxbw)),'r--');
 endif
 % 
 plot(real(gL),imag(gL),'b.')
-text(real(gL)+0.05,imag(gL),'\Gamma_{L}')
+text(real(gL)+0.02,imag(gL),'\Gamma_{L}')
 plot(real(gS),imag(gS),'r.')
-text(real(gS)+0.05,imag(gS),'\Gamma_{S}')
+text(real(gS)+0.02,imag(gS),'\Gamma_{S}')
